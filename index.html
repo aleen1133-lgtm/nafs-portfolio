@@ -1,32 +1,16 @@
-<section class="grid">
-  <article class="card">
-    <h2>📘 السيرة الذاتية</h2>
-    <p>المؤهلات العلمية والخبرات والمهارات المهنية.</p>
-    <a href="#cv">فتح القسم</a>
-  </article>
-  <article class="card">
-    <h2>📝 محاضر اجتماعات نافس</h2>
-    <p>توثيق الاجتماعات والتوصيات وصور المحاضر.</p>
-    <a href="#meetings">فتح القسم</a>
-  </article>
-  <article class="card">
-    <h2>📊 قياس نواتج التعلم</h2>
-    <p>الاختبارات وتحليل النتائج ومؤشرات التحسن.</p>
-    <a href="#results">فتح القسم</a>
-  </article>
-  <article class="card">
-    <h2>📂 الاختبارات والشواهد</h2>
-    <p>تنظيم الاختبارات والأدلة والصور والملفات.</p>
-    <a href="#evidence">فتح القسم</a>
-  </article>
-  <article class="card">
-    <h2>💡 المبادرات والمشاريع</h2>
-    <p>توثيق المبادرات التعليمية والمشاريع المنفذة.</p>
-    <a href="#projects">فتح القسم</a>
-  </article>
-  <article class="card">
-    <h2>🏆 التقارير والإنجازات</h2>
-    <p>التقارير الدورية والشهادات والإنجازات المهنية.</p>
-    <a href="#reports">فتح القسم</a>
-  </article>
+<section class="panel" id="library">
+  <h3>مكتبة الإنجاز</h3>
+  <div class="goldline"></div>
+  <div class="filters">
+    <input id="search" placeholder="ابحثي بالعنوان أو التفاصيل...">
+    <select id="statusFilter">
+      <option value="all">كل الحالات</option>
+      <option value="draft">المسودات</option>
+      <option value="published">المنشورة</option>
+    </select>
+  </div>
+  <div class="filters">
+    <select id="sectionFilter" aria-label="تصفية حسب القسم"></select>
+  </div>
+  <div id="records" class="records"></div>
 </section>
