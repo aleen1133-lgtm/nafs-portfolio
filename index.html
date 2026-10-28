@@ -88,6 +88,7 @@ footer{text-align:center;padding:25px;background:var(--navy);color:#e7d4af;margi
     </div>
     <button onclick="showPage('add')">＋ إضافة إنجاز</button>
     <button onclick="showPage('library')">مكتبة الإنجاز</button>
+    <button class="btn" onclick="supabaseClient.auth.signOut().then(({error}) => error ? alert('تعذر تسجيل الخروج') : location.reload())">تسجيل الخروج</button>
   </nav>
 </header>
 
