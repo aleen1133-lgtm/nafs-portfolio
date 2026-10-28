@@ -300,5 +300,263 @@ const filter=document.getElementById('sectionFilter');
 sections.forEach(s=>filter.add(new Option(s,s)));
 updateStats();
 </script>
+<script>
+(() => {
+  const db = supabaseClient;
+  let session = null;
+
+  const panel = document.createElement('div');
+  panel.style.cssText =
+    'display:none;position:fixed;inset:0;z-index:99999;' +
+    'background:#0008;align-items:center;justify-content:center;padding:20px';
+
+  panel.innerHTML = `
+    <div style="background:white;padding:25px;border-radius:14px;
+      width:min(380px,100%);font-family:Tahoma,Arial;color:#173044">
+      <h3>تسجيل الدخول لمزامنة المنصة</h3>
+      <p>سجّلي الدخول بحساب المنصة في Supabase.</p>
+      <input id="cloudEmail" type="email" placeholder="البريد الإلكتروني"
+        style="box-sizing:border-box;width:100%;padding:12px;margin:8px 0">
+      <input id="cloudPassword" type="password" placeholder="كلمة المرور"
+        style="box-sizing:border-box;width:100%;padding:12px;margin:8px 0">
+      <button id="cloudLogin" type="button"
+        style="padding:12px;background:#173044;color:white;border:0;border-radius:8px">
+        تسجيل الدخول
+      </button>
+      <p id="cloudMessage" style="overflow-wrap:anywhere"></p>
+    </div>`;
+  document.body.appendChild(panel);
+
+  const message = text => {
+    document.getElementById('cloudMessage').textContent = text;
+  };
+
+  async function getSession() {
+    const { data, error } = await db.auth.getSession();
+    if (error) {
+      alert('تعذر التحقق من تسجيل الدخول: ' + error.message);
+      return null;
+    }
+    session = data.session;
+    if (!session) panel.style.display = 'flex';
+    return session;
+  }
+
+  async function rowToRecord(row) {
+    let attachments = [];
+    try {
+      attachments = JSON.parse(row.attachment_url || '[]');
+      if (!Array.isArray(attachments)) attachments = [];
+    } catch {
+      attachments = [];
+    }
+
+    attachments = await Promise.all(attachments.map(async a => {
+      if (!a.path) return a;
+      const { data } = await db.storage
+        .from('nafs-attachments')
+        .createSignedUrl(a.path, 3600);
+      return { ...a, data: data?.signedUrl || '#' };
+    }));
+
+    return {
+      id: row.id,
+      type: row.record_type || row.category || '',
+      section: row.section || '',
+      date: row.record_date || '',
+      title: row.title || '',
+      details: row.details || row.description || '',
+      status: row.status || 'draft',
+      attachments
+    };
+  }
+
+  async function loadCloudRecords() {
+    const current = await getSession();
+    if (!current) return;
+
+    const { data, error } = await db.from('platform_records')
+      .select('*')
+      .eq('owner_id', current.user.id)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      message('تعذر تحميل السجلات: ' + error.message);
+      panel.style.display = 'flex';
+      return;
+    }
+
+    const remote = await Promise.all(data.map(rowToRecord));
+    const key = r => [r.title, r.section, r.date, r.type].join('|');
+    const remoteKeys = new Set(remote.map(key));
+    const localOnly = records.filter(r => !remoteKeys.has(key(r)));
+
+    records.splice(0, records.length, ...remote, ...localOnly);
+    renderRecords();
+    updateStats();
+  }
+
+  document.getElementById('cloudLogin').addEventListener('click', async () => {
+    const email = document.getElementById('cloudEmail').value.trim();
+    const password = document.getElementById('cloudPassword').value;
+
+    if (!email || !password) {
+      message('أدخلي البريد الإلكتروني وكلمة المرور.');
+      return;
+    }
+
+    message('جارٍ تسجيل الدخول...');
+    const { data, error } = await db.auth.signInWithPassword({
+      email, password
+    });
+
+    if (error) {
+      message('تعذر تسجيل الدخول: ' + error.message);
+      return;
+    }
+
+    session = data.session;
+    panel.style.display = 'none';
+    await loadCloudRecords();
+  });
+
+  window.saveRecord = async function(status) {
+    const current = await getSession();
+    if (!current) return;
+
+    const title = document.getElementById('title').value.trim();
+    const type = document.getElementById('type').value || 'عام';
+    const section = document.getElementById('section').value || '';
+    const date = document.getElementById('date').value || null;
+    const details = document.getElementById('details').value.trim();
+
+    if (!title) {
+      alert('اكتبي عنوان السجل أولًا.');
+      return;
+    }
+
+    const uploaded = [];
+    const files = [...selectedFiles];
+
+    try {
+      for (const file of files) {
+        const safeName = file.name.replace(/[^\w.\-]+/g, '_');
+        const path = current.user.id + '/' + Date.now() + '_' +
+          Math.random().toString(36).slice(2) + '_' + safeName;
+
+        const { error } = await db.storage.from('nafs-attachments')
+          .upload(path, file, {
+            upsert: false,
+            contentType: file.type || 'application/octet-stream'
+          });
+
+        if (error) throw error;
+        uploaded.push({ name: file.name, type: file.type, path });
+      }
+
+      const row = {
+        title,
+        category: type,
+        description: details,
+        record_date: date,
+        attachment_url: JSON.stringify(uploaded),
+        status: status === 'published' ? 'published' : 'draft',
+        record_type: type,
+        section,
+        details,
+        owner_id: current.user.id
+      };
+
+      const { data, error } = await db.from('platform_records')
+        .insert(row).select('*').single();
+
+      if (error) throw error;
+
+      const saved = await rowToRecord(data);
+      records.splice(0, records.length,
+        saved,
+        ...records.filter(r =>
+          !(r.title === saved.title && r.section === saved.section &&
+            r.date === saved.date && r.type === saved.type)
+        )
+      );
+
+      renderRecords();
+      updateStats();
+      document.getElementById('recordForm').reset();
+      resetFiles();
+      showPage('library');
+      alert('تم حفظ السجل في قاعدة البيانات بنجاح.');
+    } catch (error) {
+      if (uploaded.length) {
+        await db.storage.from('nafs-attachments')
+          .remove(uploaded.map(a => a.path));
+      }
+      alert('تعذر الحفظ: ' + (error.message || error) +
+        '\nقد تحتاج صلاحيات قاعدة البيانات أو مخزن المرفقات.');
+    }
+  };
+
+  window.publishRecord = async function(id) {
+    const current = await getSession();
+    if (!current) return;
+
+    const { error } = await db.from('platform_records')
+      .update({ status: 'published' })
+      .eq('id', id).eq('owner_id', current.user.id);
+
+    if (error) {
+      alert('تعذر النشر: ' + error.message);
+      return;
+    }
+
+    const r = records.find(x => String(x.id) === String(id));
+    if (r) r.status = 'published';
+    renderRecords();
+    updateStats();
+  };
+
+  window.deleteRecord = async function(id) {
+    if (!confirm('هل تريدين حذف هذا السجل ومرفقاته؟')) return;
+
+    const current = await getSession();
+    if (!current) return;
+
+    const r = records.find(x => String(x.id) === String(id));
+    const { error } = await db.from('platform_records')
+      .delete().eq('id', id).eq('owner_id', current.user.id);
+
+    if (error) {
+      alert('تعذر الحذف: ' + error.message);
+      return;
+    }
+
+    if (r?.attachments?.some(a => a.path)) {
+      await db.storage.from('nafs-attachments')
+        .remove(r.attachments.filter(a => a.path).map(a => a.path));
+    }
+
+    records.splice(0, records.length,
+      ...records.filter(x => String(x.id) !== String(id)));
+    renderRecords();
+    updateStats();
+  };
+
+  (async () => {
+    const { data, error } = await db.auth.getSession();
+    if (error) {
+      message(error.message);
+      panel.style.display = 'flex';
+      return;
+    }
+    session = data.session;
+    if (session) {
+      await loadCloudRecords();
+    } else {
+      panel.style.display = 'flex';
+    }
+  })();
+})();
+</script>
 </body>
 </html>
