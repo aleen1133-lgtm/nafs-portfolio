@@ -555,8 +555,7 @@ const { data, error } = await query.order('created_at', { ascending: false });
     if (session) {
       await loadCloudRecords();
     } else {
-      panel.style.display = 'flex';
-    }
+await loadCloudRecords();    }
   })();
 })();
 </script>
