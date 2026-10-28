@@ -374,13 +374,14 @@ updateStats();
 
   async function loadCloudRecords() {
     const current = await getSession();
-    if (!current) return;
-
-    const { data, error } = await db.from('platform_records')
-      .select('*')
-      .eq('owner_id', current.user.id)
-      .order('created_at', { ascending: false });
-
+const isGuest = !current;
+   let query = db.from('platform_records').select('*');
+if (current) {
+  query = query.eq('owner_id', current.user.id);
+} else {
+  query = query.eq('status', 'published');
+}
+const { data, error } = await query.order('created_at', { ascending: false });
     if (error) {
       message('تعذر تحميل السجلات: ' + error.message);
       panel.style.display = 'flex';
